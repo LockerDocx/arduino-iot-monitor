@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Función para validar que los datos del sensor son correctos
+    function isValidTelemetry(data) {
+      return data.keys().hasAll(['temp', 'hum', 'timestamp']) &&
+             data.temp is number &&
+             data.hum is number &&
+             data.timestamp is number &&
+             // Rangos ampliados para CPD (Centro de Procesamiento de Datos)
+             // Aceptamos desde frío extremo hasta calor de incendio para alertas críticas
+             data.temp > -100 && data.temp < 250 && 
+             data.hum >= 0 && data.hum <= 100;
+    }
+
+    match /telemetry/latest {
+      // Cualquiera puede ver los datos (necesario para que tu web en Vercel funcione)
+      allow read: if true;
+      
+      // Solo permitimos escribir si los datos tienen el formato correcto
+      allow write: if isValidTelemetry(request.resource.data);
+    }
+
+    // Reglas para el sistema de alertas por correo (Extensión Trigger Email)
+    match /mail/{mailId} {
+      // Permitimos crear correos desde la web cuando hay una alerta
+      allow create: if true;
+      // No permitimos leer ni borrar correos por seguridad
+      allow read, update, delete: if false;
+    }
+  }
+}

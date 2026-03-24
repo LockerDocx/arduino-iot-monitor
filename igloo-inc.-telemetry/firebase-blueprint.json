@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "Telemetry": {
+      "title": "Telemetry",
+      "description": "Real-time sensor data from Arduino",
+      "type": "object",
+      "properties": {
+        "temp": {
+          "type": "number",
+          "description": "Temperature in Celsius"
+        },
+        "hum": {
+          "type": "number",
+          "description": "Humidity percentage"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "Unix timestamp of the reading"
+        }
+      },
+      "required": ["temp", "hum", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/telemetry/latest": {
+      "schema": "Telemetry",
+      "description": "The latest reading from the sensor"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Igloo Inc. Telemetry",
+  "description": "Biometric and Environmental Control Panel for IoT monitoring.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,150 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-abyssal: #050505;
+  --color-carbon: #111111;
+  --color-thermal: #FF3B00;
+  --color-liquid: #00F0FF;
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+}
+
+@layer base {
+  body {
+    @apply bg-abyssal text-white font-sans overflow-x-hidden;
+  }
+
+  /* Hide scrollbar for clean look */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/5 backdrop-blur-[40px] border border-white/5;
+  }
+
+  .frost-glass {
+    @apply bg-white/10 backdrop-blur-[60px] border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)];
+  }
+
+  .chromatic-aberration {
+    text-shadow: 2px 0 0 rgba(255, 0, 0, 0.8), -2px 0 0 rgba(0, 255, 255, 0.8);
+    mix-blend-mode: screen;
+  }
+
+  .glitch-hover:hover {
+    animation: glitch-skew 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both infinite;
+    text-shadow: 2px 0 0 rgba(255, 0, 0, 0.8), -2px 0 0 rgba(0, 255, 255, 0.8);
+  }
+
+  .glitch-text-thermal,
+  .glitch-text-liquid {
+    position: relative;
+    display: inline-block;
+  }
+  
+  .glitch-text-thermal::before,
+  .glitch-text-thermal::after,
+  .glitch-text-liquid::before,
+  .glitch-text-liquid::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  /* Trigger on group hover */
+  .group:hover .glitch-text-thermal::before,
+  .group:hover .glitch-text-thermal::after,
+  .group:hover .glitch-text-liquid::before,
+  .group:hover .glitch-text-liquid::after {
+    opacity: 1;
+  }
+  
+  .group:hover .glitch-text-thermal::before {
+    left: 4px;
+    text-shadow: -4px 0 #FF3B00, 4px 0 #00F0FF;
+    animation: glitch-anim-1 0.3s infinite linear alternate-reverse;
+  }
+  
+  .group:hover .glitch-text-thermal::after {
+    left: -4px;
+    text-shadow: -4px 0 #00F0FF, 4px 0 #FF3B00;
+    animation: glitch-anim-2 0.2s infinite linear alternate-reverse;
+  }
+  
+  .group:hover .glitch-text-liquid::before {
+    left: 4px;
+    text-shadow: -4px 0 #00F0FF, 4px 0 #FF3B00;
+    animation: glitch-anim-1 0.3s infinite linear alternate-reverse;
+  }
+  
+  .group:hover .glitch-text-liquid::after {
+    left: -4px;
+    text-shadow: -4px 0 #FF3B00, 4px 0 #00F0FF;
+    animation: glitch-anim-2 0.2s infinite linear alternate-reverse;
+  }
+
+  .tabular-data {
+    font-variant-numeric: tabular-nums;
+    will-change: transform, opacity;
+  }
+
+  .bg-thermal-gradient {
+    background: radial-gradient(circle at center, rgba(255, 59, 0, 0.15) 0%, transparent 70%);
+  }
+
+  .bg-liquid-gradient {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.15) 0%, transparent 70%);
+  }
+}
+
+@keyframes glitch-skew {
+  0% { transform: skew(0deg); }
+  20% { transform: skew(-20deg); }
+  40% { transform: skew(20deg); }
+  60% { transform: skew(-10deg); }
+  80% { transform: skew(10deg); }
+  100% { transform: skew(0deg); }
+}
+
+@keyframes glitch-anim-1 {
+  0% { clip-path: inset(20% 0 80% 0); transform: translate(0); }
+  10% { clip-path: inset(60% 0 10% 0); transform: translate(-2px, 2px); }
+  20% { clip-path: inset(40% 0 50% 0); transform: translate(2px, -2px); }
+  30% { clip-path: inset(80% 0 5% 0); transform: translate(-2px, 0); }
+  40% { clip-path: inset(10% 0 70% 0); transform: translate(2px, 2px); }
+  50% { clip-path: inset(30% 0 50% 0); transform: translate(0); }
+  60% { clip-path: inset(80% 0 5% 0); transform: translate(-2px, 0); }
+  70% { clip-path: inset(10% 0 70% 0); transform: translate(2px, 2px); }
+  80% { clip-path: inset(30% 0 50% 0); transform: translate(0); }
+  90% { clip-path: inset(60% 0 10% 0); transform: translate(-2px, 2px); }
+  100% { clip-path: inset(20% 0 80% 0); transform: translate(0); }
+}
+
+@keyframes glitch-anim-2 {
+  0% { clip-path: inset(10% 0 60% 0); transform: translate(0); }
+  10% { clip-path: inset(30% 0 20% 0); transform: translate(2px, -2px); }
+  20% { clip-path: inset(70% 0 10% 0); transform: translate(-2px, 2px); }
+  30% { clip-path: inset(20% 0 50% 0); transform: translate(2px, 0); }
+  40% { clip-path: inset(50% 0 30% 0); transform: translate(-2px, -2px); }
+  50% { clip-path: inset(5% 0 80% 0); transform: translate(0); }
+  60% { clip-path: inset(20% 0 50% 0); transform: translate(2px, 0); }
+  70% { clip-path: inset(50% 0 30% 0); transform: translate(-2px, -2px); }
+  80% { clip-path: inset(5% 0 80% 0); transform: translate(0); }
+  90% { clip-path: inset(30% 0 20% 0); transform: translate(2px, -2px); }
+  100% { clip-path: inset(10% 0 60% 0); transform: translate(0); }
+}
