@@ -25,7 +25,7 @@ export function LiveMetrics() {
 
   // Siren Logic
   useEffect(() => {
-    const isAlert = data && data.temperature > 28;
+    const isAlert = data && (data.temperature > 28 || data.temperature < 15 || data.humidity > 78);
 
     if (isAlert && isAudioEnabled) {
       if (!audioCtxRef.current) {
@@ -76,11 +76,16 @@ export function LiveMetrics() {
   useEffect(() => {
     if (!data) return;
 
-    const threshold = 28;
+    const tempThresholdHigh = 28;
+    const tempThresholdLow = 15;
+    const humThreshold = 78;
     const cooldown = 1000 * 60 * 30; // 30 minutes cooldown between emails
     const now = Date.now();
 
-    if (data.temperature > threshold && (now - lastEmailSentRef.current) > cooldown) {
+    const isTempAlert = data.temperature > tempThresholdHigh || data.temperature < tempThresholdLow;
+    const isHumAlert = data.humidity > humThreshold;
+
+    if ((isTempAlert || isHumAlert) && (now - lastEmailSentRef.current) > cooldown) {
       const sendEmailAlert = async () => {
         const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
         const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
@@ -91,18 +96,26 @@ export function LiveMetrics() {
           return;
         }
 
+        let problem = '';
+        if (data.temperature > tempThresholdHigh) problem = 'Temperatura Excesiva (> 28°C)';
+        else if (data.temperature < tempThresholdLow) problem = 'Temperatura Crítica Baja (< 15°C)';
+        
+        if (data.humidity > humThreshold) {
+          problem = problem ? `${problem} & Humedad Crítica (> 78%)` : 'Humedad Crítica (> 78%)';
+        }
+
         try {
           await emailjs.send(
             serviceId,
             templateId,
             {
               to_email: 'gerardmp2008@gmail.com',
-              subject: 'Alert CPD',
+              subject: '🚨 ALERTA CRÍTICA CPD',
               temperature: data.temperature.toFixed(1),
               humidity: data.humidity.toFixed(1),
               timestamp: new Date(data.timestamp).toLocaleString(),
-              problem: 'Temperatura Excesiva (> 28°C)',
-              message: 'Por favor, revise el sistema de refrigeración del CPD de inmediato para evitar daños en el hardware.'
+              problem: problem,
+              message: 'Por favor, revise el sistema de climatización del CPD de inmediato. Los valores están fuera del rango de seguridad.'
             },
             publicKey
           );
@@ -122,16 +135,16 @@ export function LiveMetrics() {
   const tempDisplay = data ? data.temperature.toFixed(1) : "–";
   const humDisplay = data ? data.humidity.toFixed(1) : "–";
   const isHot = data ? data.temperature > 28 : false;
-  const isHumid = data ? data.humidity > 45.0 : false;
+  const isHumid = data ? data.humidity > 78.0 : false;
   const isLow = data ? data.temperature < 15 : false;
-  const isCritical = isHot || isLow;
+  const isCritical = isHot || isLow || isHumid;
 
   return (
     <div className={clsx(
       "relative w-full flex flex-col md:flex-row items-center justify-center gap-16 md:gap-32 p-8 transition-all duration-1000",
       isFullscreen ? "h-screen" : "min-h-[80vh]",
       isHot ? "bg-red-950/20" : isHumid ? "bg-liquid-gradient" : "",
-      isHot && "animate-pulse-slow"
+      isCritical && "animate-pulse-slow"
     )}>
       {/* Audio Toggle */}
       <div className="absolute top-8 right-8 z-50">
@@ -160,7 +173,7 @@ export function LiveMetrics() {
           >
             <AlertTriangle size={18} className="animate-bounce" />
             <span className="font-mono text-sm font-bold tracking-tighter uppercase">
-              {isHot ? "CRITICAL HEAT: > 28°C" : "CRITICAL COLD: < 15°C"}
+              {isHot ? "CRITICAL HEAT: > 28°C" : isLow ? "CRITICAL COLD: < 15°C" : "CRITICAL HUMIDITY: > 78%"}
             </span>
           </motion.div>
         )}
