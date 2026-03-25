@@ -9,134 +9,161 @@ import { clsx } from 'clsx';
 import { Maximize2, Bell as Siren, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 
+// Configuración de umbrales (Fácil de ajustar)
+const THRESHOLDS = {
+  TEMP_HIGH: 28,
+  TEMP_LOW: 15,
+  HUM_HIGH: 78
+};
+
 export function LiveMetrics() {
   const { data, history } = useSensorData();
   const { setCursorState, isFullscreen, setExpandedMetric } = useUIStore();
   const [mounted, setMounted] = useState(false);
+  
+  // Estado de Alertas
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  const hasSentTempAlertRef = useRef(false);
+  const hasSentHumAlertRef = useRef(false);
+  
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
-  const lastEmailSentRef = useRef<number>(0);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setMounted(true), 0);
-    return () => clearTimeout(timeout);
+    const timer = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timer);
   }, []);
 
-  // Siren Logic
-  useEffect(() => {
-    const isAlert = data && (data.temperature > 28 || data.temperature < 15 || data.humidity > 78);
-
-    if (isAlert && isAudioEnabled) {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      
-      if (!oscillatorRef.current) {
-        const ctx = audioCtxRef.current;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(440, ctx.currentTime);
-        
-        // Siren effect: frequency modulation
-        const lfo = ctx.createOscillator();
-        const lfoGain = ctx.createGain();
-        lfo.frequency.value = 2; // 2Hz siren
-        lfoGain.gain.value = 100;
-        
-        lfo.connect(lfoGain);
-        lfoGain.connect(osc.frequency);
-        
-        gain.gain.value = 0.1;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        osc.start();
-        lfo.start();
-        oscillatorRef.current = osc;
-      }
-    } else {
-      if (oscillatorRef.current) {
-        oscillatorRef.current.stop();
-        oscillatorRef.current = null;
-      }
-    }
-
-    return () => {
-      if (oscillatorRef.current) {
-        oscillatorRef.current.stop();
-        oscillatorRef.current = null;
-      }
-    };
-  }, [data, isAudioEnabled]);
-
-  // Email Alert Logic
+  // Lógica de la Sirena (Sonido de Alarma Real)
   useEffect(() => {
     if (!data) return;
 
-    const tempThresholdHigh = 28;
-    const tempThresholdLow = 15;
-    const humThreshold = 78;
-    const cooldown = 1000 * 60 * 30; // 30 minutes cooldown between emails
-    const now = Date.now();
+    const isTempCritical = data.temperature > THRESHOLDS.TEMP_HIGH || data.temperature < THRESHOLDS.TEMP_LOW;
+    const isHumCritical = data.humidity > THRESHOLDS.HUM_HIGH;
+    const isAnyCritical = isTempCritical || isHumCritical;
 
-    const isTempAlert = data.temperature > tempThresholdHigh || data.temperature < tempThresholdLow;
-    const isHumAlert = data.humidity > humThreshold;
-
-    if ((isTempAlert || isHumAlert) && (now - lastEmailSentRef.current) > cooldown) {
-      const sendEmailAlert = async () => {
-        const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
-        const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
-        const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
-
-        if (!serviceId || !templateId || !publicKey) {
-          console.warn('EmailJS keys missing. Please configure them in the Settings menu.');
-          return;
+    const startAlarm = async () => {
+      try {
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         }
-
-        let problem = '';
-        if (data.temperature > tempThresholdHigh) problem = 'Temperatura Excesiva (> 28°C)';
-        else if (data.temperature < tempThresholdLow) problem = 'Temperatura Crítica Baja (< 15°C)';
         
-        if (data.humidity > humThreshold) {
-          problem = problem ? `${problem} & Humedad Crítica (> 78%)` : 'Humedad Crítica (> 78%)';
-        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') await ctx.resume();
 
+        if (!oscillatorRef.current) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          // Sonido tipo alarma bitonal (más "molesto" y profesional)
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(600, ctx.currentTime);
+          
+          // Modulación para efecto sirena
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          lfo.frequency.value = 2.5; // Velocidad de la sirena
+          lfoGain.gain.value = 200;
+          
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+          
+          gain.gain.value = 0.15;
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          osc.start();
+          lfo.start();
+          oscillatorRef.current = osc;
+          gainNodeRef.current = gain;
+        }
+      } catch (e) {
+        console.error('Error al iniciar alarma:', e);
+      }
+    };
+
+    const stopAlarm = () => {
+      if (oscillatorRef.current) {
         try {
-          await emailjs.send(
-            serviceId,
-            templateId,
-            {
-              to_email: 'gerardmp2008@gmail.com',
-              subject: '🚨 ALERTA CRÍTICA CPD',
-              temperature: data.temperature.toFixed(1),
-              humidity: data.humidity.toFixed(1),
-              timestamp: new Date(data.timestamp).toLocaleString(),
-              problem: problem,
-              message: 'Por favor, revise el sistema de climatización del CPD de inmediato. Los valores están fuera del rango de seguridad.'
-            },
-            publicKey
-          );
-          lastEmailSentRef.current = now;
-          console.log('Email alert triggered successfully via EmailJS');
-        } catch (error) {
-          console.error('Error triggering email alert via EmailJS:', error);
-        }
-      };
+          oscillatorRef.current.stop();
+          oscillatorRef.current.disconnect();
+        } catch (e) {}
+        oscillatorRef.current = null;
+      }
+    };
 
-      sendEmailAlert();
+    if (isAnyCritical && isAudioEnabled) {
+      startAlarm();
+    } else {
+      stopAlarm();
+    }
+
+    return () => stopAlarm();
+  }, [data, isAudioEnabled]);
+
+  // Lógica de Correo (Independiente para Temp y Hum)
+  useEffect(() => {
+    if (!data) return;
+
+    const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+    const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
+    const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+
+    if (!serviceId || !templateId || !publicKey) return;
+
+    // 1. Alerta de Temperatura
+    const isTempAlert = data.temperature > THRESHOLDS.TEMP_HIGH || data.temperature < THRESHOLDS.TEMP_LOW;
+    if (isTempAlert && !hasSentTempAlertRef.current) {
+      console.log('🚨 DISPARANDO ALERTA DE TEMPERATURA:', data.temperature);
+      hasSentTempAlertRef.current = true;
+      emailjs.send(serviceId, templateId, {
+        to_email: 'gerardmp2008@gmail.com',
+        subject: '🚨 ALERTA: TEMPERATURA CRÍTICA',
+        temperature: data.temperature.toFixed(1),
+        humidity: data.humidity.toFixed(1),
+        problem: data.temperature > THRESHOLDS.TEMP_HIGH ? 'Calor Excesivo' : 'Frío Crítico',
+        message: 'La temperatura del CPD está fuera de los límites.'
+      }, publicKey)
+      .then(() => console.log('✅ Correo de temperatura enviado con éxito'))
+      .catch((err) => {
+        console.error('❌ Error al enviar correo de temperatura:', err);
+        hasSentTempAlertRef.current = false;
+      });
+    } else if (!isTempAlert && hasSentTempAlertRef.current) {
+      console.log('ℹ️ Temperatura normalizada. Reseteando estado de alerta.');
+      hasSentTempAlertRef.current = false;
+    }
+
+    // 2. Alerta de Humedad
+    const isHumAlert = data.humidity > THRESHOLDS.HUM_HIGH;
+    if (isHumAlert && !hasSentHumAlertRef.current) {
+      console.log('🚨 DISPARANDO ALERTA DE HUMEDAD:', data.humidity);
+      hasSentHumAlertRef.current = true;
+      emailjs.send(serviceId, templateId, {
+        to_email: 'gerardmp2008@gmail.com',
+        subject: '🚨 ALERTA: HUMEDAD CRÍTICA',
+        temperature: data.temperature.toFixed(1),
+        humidity: data.humidity.toFixed(1),
+        problem: 'Humedad por encima del 78%',
+        message: 'La humedad del CPD es demasiado alta.'
+      }, publicKey)
+      .then(() => console.log('✅ Correo de humedad enviado con éxito'))
+      .catch((err) => {
+        console.error('❌ Error al enviar correo de humedad:', err);
+        hasSentHumAlertRef.current = false;
+      });
+    } else if (!isHumAlert && hasSentHumAlertRef.current) {
+      console.log('ℹ️ Humedad normalizada. Reseteando estado de alerta.');
+      hasSentHumAlertRef.current = false;
     }
   }, [data]);
 
   if (!mounted) return null;
 
-  const tempDisplay = data ? data.temperature.toFixed(1) : "–";
-  const humDisplay = data ? data.humidity.toFixed(1) : "–";
-  const isHot = data ? data.temperature > 28 : false;
-  const isHumid = data ? data.humidity > 78.0 : false;
-  const isLow = data ? data.temperature < 15 : false;
+  const isHot = data ? data.temperature > THRESHOLDS.TEMP_HIGH : false;
+  const isLow = data ? data.temperature < THRESHOLDS.TEMP_LOW : false;
+  const isHumid = data ? data.humidity > THRESHOLDS.HUM_HIGH : false;
   const isCritical = isHot || isLow || isHumid;
 
   return (
@@ -146,19 +173,76 @@ export function LiveMetrics() {
       isHot ? "bg-red-950/20" : isHumid ? "bg-liquid-gradient" : "",
       isCritical && "animate-pulse-slow"
     )}>
-      {/* Audio Toggle */}
-      <div className="absolute top-8 right-8 z-50">
+      {/* BOTÓN DE ALERTA - POSICIÓN INFERIOR PARA EVITAR CONFLICTOS Y ASEGURAR INTERACTIVIDAD */}
+      <div className="fixed bottom-8 right-8 z-[999999] flex flex-col items-end gap-4 pointer-events-auto">
+        <AnimatePresence>
+          {isCritical && !isAudioEnabled && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.9 }}
+              className="bg-red-600 text-white text-[10px] font-bold px-4 py-2 rounded-lg shadow-xl border border-red-400 animate-pulse flex items-center gap-2"
+            >
+              <AlertTriangle size={14} />
+              ¡PELIGRO! ACTIVA EL SONIDO DE ALARMA
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <button 
-          onClick={() => setIsAudioEnabled(!isAudioEnabled)}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            const newState = !isAudioEnabled;
+            console.log('!!! BOTÓN DE ALARMA PULSADO !!! Nuevo estado:', newState);
+            setIsAudioEnabled(newState);
+            
+            // Inicialización inmediata y agresiva del AudioContext
+            try {
+              const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+              if (!audioCtxRef.current) {
+                audioCtxRef.current = new AudioContextClass();
+                console.log('AudioContext Creado');
+              }
+              if (audioCtxRef.current.state === 'suspended') {
+                audioCtxRef.current.resume().then(() => {
+                  console.log('AudioContext Resumido');
+                });
+              }
+            } catch (err) {
+              console.error('Error al inicializar audio:', err);
+            }
+          }}
           className={clsx(
-            "p-3 rounded-full border transition-all duration-300 flex items-center gap-2",
-            isAudioEnabled ? "bg-white/10 border-white/20 text-white" : "bg-red-500/20 border-red-500/40 text-red-400"
+            "group relative flex items-center gap-5 px-8 py-6 rounded-2xl border-2 transition-all duration-300 shadow-2xl hover:scale-105 active:scale-90 cursor-pointer overflow-hidden",
+            isAudioEnabled 
+              ? "bg-green-600/20 border-green-500 text-green-400 shadow-green-500/20" 
+              : "bg-red-600/20 border-red-500 text-red-400 shadow-red-500/20"
           )}
         >
-          {isAudioEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-          <span className="text-[10px] uppercase font-mono tracking-widest hidden md:block">
-            {isAudioEnabled ? "Alerts On" : "Alerts Muted"}
-          </span>
+          {/* Efecto de fondo pulsante si hay alerta */}
+          {isCritical && !isAudioEnabled && (
+            <div className="absolute inset-0 bg-red-600 animate-pulse opacity-30" />
+          )}
+          
+          <div className={clsx(
+            "relative z-10 p-3 rounded-xl transition-all duration-500",
+            isAudioEnabled ? "bg-green-500 text-black rotate-0" : "bg-red-500 text-white rotate-12"
+          )}>
+            {isAudioEnabled ? <Volume2 size={28} /> : <VolumeX size={28} />}
+          </div>
+          
+          <div className="relative z-10 flex flex-col items-start">
+            <span className="text-[10px] font-mono font-bold opacity-60 tracking-[0.2em] mb-1">SISTEMA DE ALERTA</span>
+            <span className="font-display font-black uppercase tracking-widest text-xl">
+              {isAudioEnabled ? "ACTIVADO" : "SILENCIADO"}
+            </span>
+          </div>
+
+          {/* Brillo dinámico */}
+          <div className={clsx(
+            "absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500",
+            isAudioEnabled ? "bg-green-400" : "bg-red-400"
+          )} />
         </button>
       </div>
 
@@ -225,9 +309,9 @@ export function LiveMetrics() {
               "font-display text-[20vw] md:text-[12vw] leading-none tracking-[-0.04em] tabular-data glitch-text-thermal transition-all duration-500",
               isHot ? "text-red-500 drop-shadow-[0_0_30px_rgba(239,68,68,0.8)]" : "text-white group-hover:drop-shadow-[0_0_30px_rgba(255,59,0,0.5)]"
             )}
-            data-text={tempDisplay}
+            data-text={data ? data.temperature.toFixed(1) : "–"}
           >
-            {tempDisplay}
+            {data ? data.temperature.toFixed(1) : "–"}
           </span>
           <span className={clsx(
             "font-display text-4xl md:text-6xl mt-4 md:mt-8 transition-all duration-500",
@@ -270,9 +354,9 @@ export function LiveMetrics() {
         <div className="flex items-start z-10">
           <span 
             className="font-display text-[20vw] md:text-[12vw] leading-none tracking-[-0.04em] tabular-data text-white glitch-text-liquid group-hover:drop-shadow-[0_0_30px_rgba(0,240,255,0.5)] transition-all duration-500"
-            data-text={humDisplay}
+            data-text={data ? data.humidity.toFixed(1) : "–"}
           >
-            {humDisplay}
+            {data ? data.humidity.toFixed(1) : "–"}
           </span>
           <span className="font-display text-4xl md:text-6xl mt-4 md:mt-8 text-liquid group-hover:drop-shadow-[0_0_20px_rgba(0,240,255,0.8)] transition-all duration-500">%</span>
         </div>
