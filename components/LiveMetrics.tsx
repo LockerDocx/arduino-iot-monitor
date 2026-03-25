@@ -35,7 +35,7 @@ export function LiveMetrics() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Lógica de la Sirena (Sonido de Alarma Real)
+  // Lógica de la Sirena (Sonido de Alarma Real) - CORREGIDA PARA EVITAR STUTTERING
   useEffect(() => {
     if (!data) return;
 
@@ -43,64 +43,65 @@ export function LiveMetrics() {
     const isHumCritical = data.humidity > THRESHOLDS.HUM_HIGH;
     const isAnyCritical = isTempCritical || isHumCritical;
 
-    const startAlarm = async () => {
-      try {
-        if (!audioCtxRef.current) {
-          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        
-        const ctx = audioCtxRef.current;
-        if (ctx.state === 'suspended') await ctx.resume();
+    // Solo actuar si cambia el estado de "debería sonar"
+    if (isAnyCritical && isAudioEnabled) {
+      if (!oscillatorRef.current) {
+        const startAlarm = async () => {
+          try {
+            if (!audioCtxRef.current) {
+              audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            }
+            const ctx = audioCtxRef.current;
+            if (ctx.state === 'suspended') await ctx.resume();
 
-        if (!oscillatorRef.current) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          
-          // Sonido tipo alarma bitonal (más "molesto" y profesional)
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(600, ctx.currentTime);
-          
-          // Modulación para efecto sirena
-          const lfo = ctx.createOscillator();
-          const lfoGain = ctx.createGain();
-          lfo.frequency.value = 2.5; // Velocidad de la sirena
-          lfoGain.gain.value = 200;
-          
-          lfo.connect(lfoGain);
-          lfoGain.connect(osc.frequency);
-          
-          gain.gain.value = 0.15;
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          
-          osc.start();
-          lfo.start();
-          oscillatorRef.current = osc;
-          gainNodeRef.current = gain;
-        }
-      } catch (e) {
-        console.error('Error al iniciar alarma:', e);
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(600, ctx.currentTime);
+            
+            const lfo = ctx.createOscillator();
+            const lfoGain = ctx.createGain();
+            lfo.frequency.value = 2.5;
+            lfoGain.gain.value = 200;
+            lfo.connect(lfoGain);
+            lfoGain.connect(osc.frequency);
+            
+            gain.gain.value = 0.15;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.start();
+            lfo.start();
+            oscillatorRef.current = osc;
+            gainNodeRef.current = gain;
+            console.log('📢 ALARMA INICIADA');
+          } catch (e) {
+            console.error('Error al iniciar alarma:', e);
+          }
+        };
+        startAlarm();
       }
-    };
-
-    const stopAlarm = () => {
+    } else {
       if (oscillatorRef.current) {
         try {
           oscillatorRef.current.stop();
           oscillatorRef.current.disconnect();
+          console.log('🔇 ALARMA DETENIDA');
         } catch (e) {}
         oscillatorRef.current = null;
       }
-    };
-
-    if (isAnyCritical && isAudioEnabled) {
-      startAlarm();
-    } else {
-      stopAlarm();
     }
+  }, [isAudioEnabled, data?.temperature, data?.humidity]); // Dependencias específicas para evitar reinicios innecesarios
 
-    return () => stopAlarm();
-  }, [data, isAudioEnabled]);
+  // Cleanup al desmontar
+  useEffect(() => {
+    return () => {
+      if (oscillatorRef.current) {
+        oscillatorRef.current.stop();
+        oscillatorRef.current = null;
+      }
+    };
+  }, []);
 
   // Lógica de Correo (Independiente para Temp y Hum)
   useEffect(() => {
@@ -117,13 +118,22 @@ export function LiveMetrics() {
     if (isTempAlert && !hasSentTempAlertRef.current) {
       console.log('🚨 DISPARANDO ALERTA DE TEMPERATURA:', data.temperature);
       hasSentTempAlertRef.current = true;
+      
+      const isHigh = data.temperature > THRESHOLDS.TEMP_HIGH;
+      
       emailjs.send(serviceId, templateId, {
         to_email: 'gerardmp2008@gmail.com',
-        subject: '🚨 ALERTA: TEMPERATURA CRÍTICA',
-        temperature: data.temperature.toFixed(1),
-        humidity: data.humidity.toFixed(1),
-        problem: data.temperature > THRESHOLDS.TEMP_HIGH ? 'Calor Excesivo' : 'Frío Crítico',
-        message: 'La temperatura del CPD está fuera de los límites.'
+        alert_title: isHigh ? 'CRITICAL OVERHEAT DETECTED' : 'CRITICAL LOW TEMPERATURE',
+        alert_type: 'TEMPERATURE',
+        severity: 'CRITICAL',
+        location: 'CPD PRINCIPAL - RACK A1',
+        current_value: `${data.temperature.toFixed(1)}°C`,
+        threshold: isHigh ? `> ${THRESHOLDS.TEMP_HIGH}°C` : `< ${THRESHOLDS.TEMP_LOW}°C`,
+        timestamp: new Date().toLocaleString('es-ES'),
+        action_required: isHigh 
+          ? 'Verificar sistema de refrigeración y flujo de aire inmediatamente.' 
+          : 'Verificar sistema de calefacción y aislamiento térmico.',
+        system_status: 'EMERGENCY MODE ACTIVE'
       }, publicKey)
       .then(() => console.log('✅ Correo de temperatura enviado con éxito'))
       .catch((err) => {
@@ -140,13 +150,18 @@ export function LiveMetrics() {
     if (isHumAlert && !hasSentHumAlertRef.current) {
       console.log('🚨 DISPARANDO ALERTA DE HUMEDAD:', data.humidity);
       hasSentHumAlertRef.current = true;
+      
       emailjs.send(serviceId, templateId, {
         to_email: 'gerardmp2008@gmail.com',
-        subject: '🚨 ALERTA: HUMEDAD CRÍTICA',
-        temperature: data.temperature.toFixed(1),
-        humidity: data.humidity.toFixed(1),
-        problem: 'Humedad por encima del 78%',
-        message: 'La humedad del CPD es demasiado alta.'
+        alert_title: 'CRITICAL HUMIDITY LEVELS',
+        alert_type: 'HUMIDITY',
+        severity: 'WARNING',
+        location: 'CPD PRINCIPAL - ZONA SENSORES',
+        current_value: `${data.humidity.toFixed(1)}%`,
+        threshold: `> ${THRESHOLDS.HUM_HIGH}%`,
+        timestamp: new Date().toLocaleString('es-ES'),
+        action_required: 'Revisar posibles filtraciones o fallo en deshumidificador.',
+        system_status: 'MONITORING ACTIVE'
       }, publicKey)
       .then(() => console.log('✅ Correo de humedad enviado con éxito'))
       .catch((err) => {
@@ -173,18 +188,18 @@ export function LiveMetrics() {
       isHot ? "bg-red-950/20" : isHumid ? "bg-liquid-gradient" : "",
       isCritical && "animate-pulse-slow"
     )}>
-      {/* BOTÓN DE ALERTA - POSICIÓN INFERIOR PARA EVITAR CONFLICTOS Y ASEGURAR INTERACTIVIDAD */}
-      <div className="fixed bottom-8 right-8 z-[999999] flex flex-col items-end gap-4 pointer-events-auto">
+      {/* BOTÓN DE ALERTA - DISEÑO PROFESIONAL Y COMPACTO */}
+      <div className="fixed bottom-6 right-6 z-[999999] flex flex-col items-end gap-3 pointer-events-auto">
         <AnimatePresence>
           {isCritical && !isAudioEnabled && (
             <motion.div 
-              initial={{ opacity: 0, y: 10, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.9 }}
-              className="bg-red-600 text-white text-[10px] font-bold px-4 py-2 rounded-lg shadow-xl border border-red-400 animate-pulse flex items-center gap-2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="bg-red-500 text-white text-[9px] font-mono font-bold px-3 py-1 rounded border border-red-400 shadow-lg flex items-center gap-2 uppercase tracking-tighter"
             >
-              <AlertTriangle size={14} />
-              ¡PELIGRO! ACTIVA EL SONIDO DE ALARMA
+              <AlertTriangle size={12} className="animate-pulse" />
+              Audio Required
             </motion.div>
           )}
         </AnimatePresence>
@@ -213,35 +228,38 @@ export function LiveMetrics() {
             }
           }}
           className={clsx(
-            "group relative flex items-center gap-5 px-8 py-6 rounded-2xl border-2 transition-all duration-300 shadow-2xl hover:scale-105 active:scale-90 cursor-pointer overflow-hidden",
+            "group relative flex items-center gap-4 px-5 py-3 rounded-xl border transition-all duration-300 shadow-xl hover:bg-white/5 active:scale-95 cursor-pointer overflow-hidden backdrop-blur-md",
             isAudioEnabled 
-              ? "bg-green-600/20 border-green-500 text-green-400 shadow-green-500/20" 
-              : "bg-red-600/20 border-red-500 text-red-400 shadow-red-500/20"
+              ? "border-green-500/50 bg-green-500/5" 
+              : "border-red-500/50 bg-red-500/5"
           )}
         >
-          {/* Efecto de fondo pulsante si hay alerta */}
-          {isCritical && !isAudioEnabled && (
-            <div className="absolute inset-0 bg-red-600 animate-pulse opacity-30" />
-          )}
-          
-          <div className={clsx(
-            "relative z-10 p-3 rounded-xl transition-all duration-500",
-            isAudioEnabled ? "bg-green-500 text-black rotate-0" : "bg-red-500 text-white rotate-12"
-          )}>
-            {isAudioEnabled ? <Volume2 size={28} /> : <VolumeX size={28} />}
+          {/* Status Indicator Light */}
+          <div className="relative flex items-center justify-center">
+            <div className={clsx(
+              "w-2 h-2 rounded-full transition-all duration-500",
+              isAudioEnabled ? "bg-green-500 shadow-[0_0_10px_#22c55e]" : "bg-red-500 shadow-[0_0_10px_#ef4444]",
+              isCritical && !isAudioEnabled && "animate-ping"
+            )} />
           </div>
           
-          <div className="relative z-10 flex flex-col items-start">
-            <span className="text-[10px] font-mono font-bold opacity-60 tracking-[0.2em] mb-1">SISTEMA DE ALERTA</span>
-            <span className="font-display font-black uppercase tracking-widest text-xl">
-              {isAudioEnabled ? "ACTIVADO" : "SILENCIADO"}
-            </span>
+          <div className="flex flex-col items-start">
+            <span className="text-[8px] font-mono font-bold opacity-40 tracking-[0.2em] uppercase leading-none mb-1">Alert System</span>
+            <div className="flex items-center gap-2">
+              {isAudioEnabled ? <Volume2 size={14} className="text-green-500" /> : <VolumeX size={14} className="text-red-500" />}
+              <span className={clsx(
+                "font-mono font-bold uppercase tracking-widest text-[11px]",
+                isAudioEnabled ? "text-green-500" : "text-red-500"
+              )}>
+                {isAudioEnabled ? "Active" : "Muted"}
+              </span>
+            </div>
           </div>
 
-          {/* Brillo dinámico */}
+          {/* Background Glow */}
           <div className={clsx(
-            "absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500",
-            isAudioEnabled ? "bg-green-400" : "bg-red-400"
+            "absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500",
+            isAudioEnabled ? "bg-green-500" : "bg-red-500"
           )} />
         </button>
       </div>
@@ -278,8 +296,8 @@ export function LiveMetrics() {
         whileTap={{ scale: 0.98 }}
         transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
       >
-        <div className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity duration-500 pointer-events-none z-0">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity duration-500 pointer-events-none z-0 min-h-[200px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <AreaChart data={history}>
               <Area type="monotone" dataKey="temperature" stroke={isHot ? "#EF4444" : "#FF3B00"} fill={isHot ? "#EF4444" : "#FF3B00"} strokeWidth={2} isAnimationActive={false} />
             </AreaChart>
@@ -332,8 +350,8 @@ export function LiveMetrics() {
         whileTap={{ scale: 0.98 }}
         transition={{ duration: 1, delay: 0.7, ease: "easeOut" }}
       >
-        <div className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity duration-500 pointer-events-none z-0">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity duration-500 pointer-events-none z-0 min-h-[200px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <AreaChart data={history}>
               <Area type="monotone" dataKey="humidity" stroke="#00F0FF" fill="#00F0FF" strokeWidth={2} isAnimationActive={false} />
             </AreaChart>
