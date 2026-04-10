@@ -14,6 +14,10 @@ interface UIStore {
   setDrawerOpen: (state: boolean) => void;
   expandedMetric: MetricType;
   setExpandedMetric: (metric: MetricType) => void;
+  isUnlockModalOpen: boolean;
+  setUnlockModalOpen: (state: boolean) => void;
+  isAlarmUnlocked: boolean;
+  setAlarmUnlocked: (state: boolean) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -27,4 +31,8 @@ export const useUIStore = create<UIStore>((set) => ({
   setDrawerOpen: (state) => set({ isDrawerOpen: state }),
   expandedMetric: null,
   setExpandedMetric: (metric) => set({ expandedMetric: metric }),
+  isUnlockModalOpen: false,
+  setUnlockModalOpen: (state) => set({ isUnlockModalOpen: state }),
+  isAlarmUnlocked: false,
+  setAlarmUnlocked: (state) => set({ isAlarmUnlocked: state }),
 }));

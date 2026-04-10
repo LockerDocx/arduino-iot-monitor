@@ -18,7 +18,7 @@ const THRESHOLDS = {
 
 export function LiveMetrics() {
   const { data, history } = useSensorData();
-  const { setCursorState, isFullscreen, setExpandedMetric } = useUIStore();
+  const { setCursorState, isFullscreen, setExpandedMetric, isAlarmUnlocked, setUnlockModalOpen, setAlarmUnlocked } = useUIStore();
   const [mounted, setMounted] = useState(false);
   
   // Estado de Alertas
@@ -44,7 +44,7 @@ export function LiveMetrics() {
     const isAnyCritical = isTempCritical || isHumCritical;
 
     // Solo actuar si cambia el estado de "debería sonar"
-    if (isAnyCritical && isAudioEnabled) {
+    if (isAnyCritical && isAudioEnabled && !isAlarmUnlocked) {
       if (!oscillatorRef.current) {
         const startAlarm = async () => {
           try {
@@ -91,7 +91,7 @@ export function LiveMetrics() {
         oscillatorRef.current = null;
       }
     }
-  }, [isAudioEnabled, data?.temperature, data?.humidity]); // Dependencias específicas para evitar reinicios innecesarios
+  }, [isAudioEnabled, data?.temperature, data?.humidity, isAlarmUnlocked]); // Dependencias específicas para evitar reinicios innecesarios
 
   // Cleanup al desmontar
   useEffect(() => {
@@ -191,6 +191,21 @@ export function LiveMetrics() {
       {/* BOTÓN DE ALERTA - DISEÑO PROFESIONAL Y COMPACTO */}
       <div className="fixed bottom-6 right-6 z-[999999] flex flex-col items-end gap-3 pointer-events-auto">
         <AnimatePresence>
+          {isCritical && isAudioEnabled && !isAlarmUnlocked && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+            >
+              <button
+                onClick={() => setUnlockModalOpen(true)}
+                className="bg-red-600 hover:bg-red-500 text-white text-sm font-display font-bold px-6 py-3 rounded-xl border border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.5)] flex items-center gap-2 uppercase tracking-widest transition-all active:scale-95"
+              >
+                <AlertTriangle size={18} className="animate-pulse" />
+                Desbloquear
+              </button>
+            </motion.div>
+          )}
           {isCritical && !isAudioEnabled && (
             <motion.div 
               initial={{ opacity: 0, x: 20 }}

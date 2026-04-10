@@ -5,6 +5,7 @@ import { LiveMetrics } from '@/components/LiveMetrics';
 import { SmoothScroll } from '@/components/SmoothScroll';
 import { ProjectDocumentation } from '@/components/ProjectDocumentation';
 import { ChartModal } from '@/components/ChartModal';
+import { GestureAuth } from '@/components/GestureAuth';
 
 export default function Home() {
   return (
@@ -19,6 +20,9 @@ export default function Home() {
           <LiveMetrics />
         </div>
         
+        {/* Gesture Authentication Modal */}
+        <GestureAuth />
+
         {/* Project Documentation Section */}
         <ProjectDocumentation />
         
