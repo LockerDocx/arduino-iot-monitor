@@ -51,7 +51,6 @@ Hardware necesario:
 Software necesario:
 * Node.js (Version 18 o superior): Entorno de ejecucion para el script local y la web. Descargalo en: https://nodejs.org/
 * Arduino IDE: Para programar la placa Arduino. Descargalo en: https://www.arduino.cc/en/software
-* Git: Sistema de control de versiones. Descargalo en: https://git-scm.com/
 * GitHub Desktop: Interfaz grafica para gestionar tu codigo. Descargalo en: https://desktop.github.com/
 * Visual Studio Code (Recomendado): Editor de codigo. Descargalo en: https://code.visualstudio.com/
 
