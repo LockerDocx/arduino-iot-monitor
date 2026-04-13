@@ -195,23 +195,6 @@ export function GestureAuth() {
 
     const initMediaPipe = async () => {
       try {
-        // Patch window.fetch to prevent MediaPipe from throwing when trying to overwrite it
-        if (typeof window !== 'undefined') {
-          const originalFetch = window.fetch;
-          try {
-            Object.defineProperty(window, 'fetch', {
-              configurable: true,
-              enumerable: true,
-              get: () => originalFetch,
-              set: () => {
-                // Ignore attempts to overwrite fetch
-              }
-            });
-          } catch (e) {
-            console.warn('Could not patch window.fetch', e);
-          }
-        }
-
         const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
 
         const vision = await FilesetResolver.forVisionTasks(

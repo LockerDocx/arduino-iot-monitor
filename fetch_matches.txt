@@ -1,0 +1,6 @@
+      // See https://github.com/github/fetch/pull/92#issuecomment-140665932
+      var response = await fetch(url, {
+  throw "both async and sync fetching of the wasm failed";
+      var response = fetch(binaryFile, {
+orm name strings, so that we can lazily fetch uniform array locations
+rformance. Those may never be needed to fetch, if the

@@ -1,5 +1,7 @@
 {
-  "name": "Igloo Inc. Telemetry",
+  "name": "Telemetry",
   "description": "Biometric and Environmental Control Panel for IoT monitoring.",
-  "requestFramePermissions": ["camera"]
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

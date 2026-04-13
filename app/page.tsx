@@ -22,9 +22,6 @@ export default function Home() {
         
         {/* Gesture Authentication Modal */}
         <GestureAuth />
-
-        {/* Project Documentation Section */}
-        <ProjectDocumentation />
         
         <ChartModal />
       </main>
