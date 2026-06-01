@@ -1,3 +1,5 @@
+'use client';
+
 import { BootSequence } from '@/components/BootSequence';
 import { CustomCursor } from '@/components/CustomCursor';
 import { Header } from '@/components/Header';
@@ -5,7 +7,12 @@ import { LiveMetrics } from '@/components/LiveMetrics';
 import { SmoothScroll } from '@/components/SmoothScroll';
 import { ProjectDocumentation } from '@/components/ProjectDocumentation';
 import { ChartModal } from '@/components/ChartModal';
-import { GestureAuth } from '@/components/GestureAuth';
+import dynamic from 'next/dynamic';
+
+const GestureAuth = dynamic(
+  () => import('@/components/GestureAuth').then((mod) => mod.GestureAuth),
+  { ssr: false }
+);
 
 export default function Home() {
   return (

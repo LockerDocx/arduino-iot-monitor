@@ -51,6 +51,7 @@ Hardware necesario:
 Software necesario:
 * Node.js (Version 18 o superior): Entorno de ejecucion para el script local y la web. Descargalo en: https://nodejs.org/
 * Arduino IDE: Para programar la placa Arduino. Descargalo en: https://www.arduino.cc/en/software
+* Git: Sistema de control de versiones. Descargalo en: https://git-scm.com/
 * GitHub Desktop: Interfaz grafica para gestionar tu codigo. Descargalo en: https://desktop.github.com/
 * Visual Studio Code (Recomendado): Editor de codigo. Descargalo en: https://code.visualstudio.com/
 
@@ -118,7 +119,7 @@ void loop() {
 
 5. Conecta el Arduino al ordenador por USB.
 6. En Arduino IDE, ve a "Herramientas" > "Placa" y selecciona tu modelo (ej. Arduino UNO).
-7. Ve a "Herramientas" > "Puerto" y selecciona el puerto donde esta conectado (ej. COM3, COM5). Anota este numero de puerto, lo necesitaras luego.
+7. Ve a "Herramientas" > "Puerto" y selecciona el puerto donde esta conectado (ej. COM3, COM4). Anota este numero de puerto, lo necesitaras luego.
 8. Haz clic en el boton "Subir" (la flecha hacia la derecha) para programar la placa.
 
 ---
@@ -248,7 +249,7 @@ Este script se ejecuta en tu ordenador. Su funcion es escuchar el puerto USB don
 4. Abre la carpeta en tu editor de codigo (Visual Studio Code) y crea un archivo llamado `server.js`.
 5. Pega el siguiente codigo en `server.js`. 
 6. Modifica la seccion `firebaseConfig` con los datos que obtuviste en el paso 4.4.
-7. Modifica la variable `path: "COM5"` con el puerto real donde esta conectado tu Arduino (el que anotaste en el paso 3.2).
+7. Modifica la variable `path: "COM4"` con el puerto real donde esta conectado tu Arduino (el que anotaste en el paso 3.2).
 
 ```javascript
 const { SerialPort } = require("serialport");
@@ -269,9 +270,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 2. Conexion con Arduino (REEMPLAZA "COM5" POR TU PUERTO REAL)
+// 2. Conexion con Arduino (REEMPLAZA "COM4" POR TU PUERTO REAL)
 // En Windows suele ser COM3, COM4, etc. En Mac/Linux suele ser /dev/ttyUSB0 o similar.
-const port = new SerialPort({ path: "COM5", baudRate: 9600 });
+const port = new SerialPort({ path: "COM4", baudRate: 9600 });
 const parser = port.pipe(new ReadlineParser({ delimiter: "\r\n" }));
 
 console.log("Puente iniciado. Esperando datos del Arduino...");

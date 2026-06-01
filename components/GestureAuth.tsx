@@ -1,8 +1,9 @@
 'use client';
 
+import '@/lib/patch-fetch'; // Must be first to safeguard window.fetch
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import type { HandLandmarker } from '@mediapipe/tasks-vision';
+import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import { Lock, Unlock, RefreshCw, ShieldAlert, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useUIStore } from '@/store/use-ui-store';
@@ -145,7 +146,6 @@ function getMatchPercentage(trajectory: Point[]) {
   }
 
   // Convert distance to percentage. 
-  // A perfect match is distance 0. 
   const percentage = Math.max(0, 100 - (bestDistance * 180));
   return Math.min(100, Math.round(percentage));
 }
@@ -156,11 +156,17 @@ export function GestureAuth() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
+  // Auth control states
+  const [authMode, setAuthMode] = useState<'biometric' | 'pin'>('biometric');
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [matchPercentage, setMatchPercentage] = useState(0);
   const threshold = 65; // Fixed threshold
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isPinched, setIsPinched] = useState(false);
+  
+  // PIN states
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState(false);
   
   const trajectoryRef = useRef<Point[]>([]);
   const isPinchedRef = useRef(false);
@@ -169,25 +175,136 @@ export function GestureAuth() {
   const animationRef = useRef<number>(0);
   const lastVideoTimeRef = useRef<number>(-1);
 
-  useEffect(() => {
-    if (!isUnlockModalOpen) {
-      // Cleanup when closed
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(t => t.stop());
-      }
-      if (handLandmarkerRef.current) {
+  // Stop camera, cancel animations, clean up hand landmarker
+  const stopBiometrics = () => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = 0;
+    }
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(t => t.stop());
+      videoRef.current.srcObject = null;
+    }
+    if (handLandmarkerRef.current) {
+      try {
         handLandmarkerRef.current.close();
-        handLandmarkerRef.current = null;
+      } catch (e) {}
+      handLandmarkerRef.current = null;
+    }
+    setIsCameraReady(false);
+    setMatchPercentage(0);
+    setIsAuthenticated(false);
+    setIsPinched(false);
+    trajectoryRef.current = [];
+    isPinchedRef.current = false;
+    isAuthenticatedRef.current = false;
+  };
+
+  // Safe handler to write PIN clicks
+  const handlePinPress = (val: string) => {
+    if (isAuthenticated || pinError || pin.length >= 4) return;
+    const newPin = pin + val;
+    setPin(newPin);
+
+    // Key press bip sound
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(450, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.015, audioCtx.currentTime);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.04);
+    } catch (e) {}
+
+    if (newPin.length === 4) {
+      if (newPin === '2008') {
+        setIsAuthenticated(true);
+        setPinError(false);
+
+        // Play success sound
+        try {
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+          gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.35);
+        } catch (e) {}
+
+        // Unlock the alarm and close modal
+        setTimeout(() => {
+          setAlarmUnlocked(true);
+          setUnlockModalOpen(false);
+          // Restore default auth mode for next run
+          setPin('');
+          setAuthMode('biometric');
+        }, 1200);
+      } else {
+        setPinError(true);
+
+        // Play error warning buzz
+        try {
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.frequency.setValueAtTime(140, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.25);
+        } catch (e) {}
+
+        // Clear pin after animation completes
+        setTimeout(() => {
+          setPin('');
+          setPinError(false);
+        }, 1000);
       }
-      setIsCameraReady(false);
-      setMatchPercentage(0);
-      setIsAuthenticated(false);
-      setIsPinched(false);
-      trajectoryRef.current = [];
-      isPinchedRef.current = false;
-      isAuthenticatedRef.current = false;
+    }
+  };
+
+  const handleBackspace = () => {
+    if (isAuthenticated || pinError) return;
+    setPin(prev => prev.slice(0, -1));
+  };
+
+  const handleClear = () => {
+    setPin('');
+    setPinError(false);
+  };
+
+  // Keyboard accessibility hook for PIN entries
+  useEffect(() => {
+    if (authMode !== 'pin' || !isUnlockModalOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handlePinPress(e.key);
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      } else if (e.key === 'Escape') {
+        setUnlockModalOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [authMode, isUnlockModalOpen, pin, isAuthenticated, pinError]);
+
+  // Handle Biometric MediaPipe Lifecycle
+  useEffect(() => {
+    if (!isUnlockModalOpen || authMode !== 'biometric') {
+      stopBiometrics();
       return;
     }
 
@@ -195,10 +312,8 @@ export function GestureAuth() {
 
     const initMediaPipe = async () => {
       try {
-        const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
-
         const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm"
         );
         const landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
@@ -224,9 +339,12 @@ export function GestureAuth() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play();
-            setIsCameraReady(true);
-            predictWebcam();
+            videoRef.current?.play().then(() => {
+              setIsCameraReady(true);
+              predictWebcam();
+            }).catch(err => {
+              console.warn("Video play interrupted or blocked", err);
+            });
           };
         }
       } catch (error) {
@@ -238,17 +356,9 @@ export function GestureAuth() {
 
     return () => {
       active = false;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(t => t.stop());
-      }
-      if (handLandmarkerRef.current) {
-        handLandmarkerRef.current.close();
-        handLandmarkerRef.current = null;
-      }
+      stopBiometrics();
     };
-  }, [isUnlockModalOpen]);
+  }, [isUnlockModalOpen, authMode]);
 
   const predictWebcam = () => {
     if (!videoRef.current || !canvasRef.current || !handLandmarkerRef.current) return;
@@ -331,6 +441,7 @@ export function GestureAuth() {
             setTimeout(() => {
               setAlarmUnlocked(true);
               setUnlockModalOpen(false);
+              setAuthMode('biometric');
             }, 1500);
           }
         }
@@ -364,7 +475,9 @@ export function GestureAuth() {
       ctx.restore();
     }
     
-    animationRef.current = requestAnimationFrame(predictWebcam);
+    if (authMode === 'biometric' && isUnlockModalOpen) {
+      animationRef.current = requestAnimationFrame(predictWebcam);
+    }
   };
 
   const resetAuth = () => {
@@ -391,7 +504,7 @@ export function GestureAuth() {
           >
             <button 
               onClick={() => setUnlockModalOpen(false)}
-              className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white/50 hover:text-white"
+              className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white/50 hover:text-white z-55"
             >
               <X size={20} />
             </button>
@@ -400,96 +513,207 @@ export function GestureAuth() {
               <div className="flex items-center gap-3">
                 <ShieldAlert className="text-liquid" size={24} />
                 <h2 className="text-xl font-display font-bold text-white tracking-widest uppercase">
-                  Desbloqueo Biométrico
+                  {authMode === 'biometric' ? 'Desbloqueo Biométrico' : 'Desbloqueo por PIN'}
                 </h2>
               </div>
-              <div className="flex items-center gap-4 mr-12">
-                <button 
-                  onClick={resetAuth}
-                  className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white/70 hover:text-white"
-                  title="Reset"
-                >
-                  <RefreshCw size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/5">
-              {!isCameraReady && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
-                  <div className="w-8 h-8 border-2 border-liquid border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-xs font-mono text-white/50 uppercase tracking-widest">Inicializando Cámara...</p>
+              
+              {authMode === 'biometric' && (
+                <div className="flex items-center gap-4 mr-12">
+                  <button 
+                    onClick={resetAuth}
+                    className="p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors text-white/70 hover:text-white"
+                    title="Reset"
+                  >
+                    <RefreshCw size={18} />
+                  </button>
                 </div>
               )}
-              
-              {/* Video Feed (Mirrored) */}
-              <video 
-                ref={videoRef} 
-                className="absolute inset-0 w-full h-full object-cover -scale-x-100 opacity-40"
-                playsInline 
-                muted 
-              />
-              
-              {/* Canvas Overlay */}
-              <canvas 
-                ref={canvasRef}
-                width={640}
-                height={480}
-                className="absolute inset-0 w-full h-full object-cover -scale-x-100 z-10"
-              />
-
-              {/* Instructions Overlay */}
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center z-20 pointer-events-none">
-                <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
-                  <p className="text-xs font-mono text-white/80">
-                    {isPinched ? "Dibujando..." : "Junta el índice y el pulgar para dibujar un cuadrado"}
-                  </p>
-                </div>
-              </div>
             </div>
 
-            {/* Real-time Feedback Panel */}
-            <div className="w-full mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col justify-center">
-                <span className="text-[10px] font-mono text-white/50 uppercase mb-2">Match Percentage (Target: {threshold}%)</span>
-                <div className="flex items-end gap-3">
-                  <span className={clsx(
-                    "text-4xl font-display font-bold tabular-nums transition-colors duration-300",
-                    matchPercentage >= threshold ? "text-green-500" : "text-liquid"
-                  )}>
-                    {matchPercentage}%
-                  </span>
-                  <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden mb-2">
-                    <motion.div 
-                      className={clsx("h-full", matchPercentage >= threshold ? "bg-green-500" : "bg-liquid")}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${matchPercentage}%` }}
-                      transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-                    />
+            {authMode === 'biometric' ? (
+              <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/5">
+                {!isCameraReady && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
+                    <div className="w-8 h-8 border-2 border-liquid border-t-transparent rounded-full animate-spin mb-4" />
+                    <p className="text-xs font-mono text-white/50 uppercase tracking-widest">Inicializando Cámara...</p>
+                  </div>
+                )}
+                
+                {/* Video Feed (Mirrored) */}
+                <video 
+                  ref={videoRef} 
+                  className="absolute inset-0 w-full h-full object-cover -scale-x-100 opacity-40"
+                  playsInline 
+                  muted 
+                />
+                
+                {/* Canvas Overlay */}
+                <canvas 
+                  ref={canvasRef}
+                  width={640}
+                  height={480}
+                  className="absolute inset-0 w-full h-full object-cover -scale-x-100 z-10"
+                />
+
+                {/* Instructions Overlay */}
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center z-20 pointer-events-none">
+                  <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+                    <p className="text-xs font-mono text-white/80">
+                      {isPinched ? "Dibujando..." : "Junta el índice y el pulgar para dibujar un cuadrado"}
+                    </p>
                   </div>
                 </div>
               </div>
+            ) : (
+              /* PIN Numeric Pad Interface */
+              <div className="w-full flex flex-col items-center justify-center py-4 bg-black/40 rounded-2xl border border-white/5 p-6 select-none max-w-md">
+                <span className="text-[10px] font-mono tracking-[0.25em] text-white/40 uppercase mb-4">
+                  SISTEMA DE SEGURIDAD SECUNDARIO
+                </span>
+                
+                {/* Display dots */}
+                <motion.div 
+                  className={clsx(
+                    "flex justify-center gap-6 mb-6 py-4 px-8 bg-black/60 rounded-full border border-white/10"
+                  )}
+                  animate={pinError ? { x: [-8, 8, -8, 8, -4, 4, 0] } : {}}
+                  transition={{ duration: 0.4 }}
+                >
+                  {[0, 1, 2, 3].map((val) => {
+                    const active = pin.length > val;
+                    return (
+                      <div
+                        key={val}
+                        className={clsx(
+                          "w-4 h-4 rounded-full border-2 transition-all duration-300",
+                          isAuthenticated 
+                            ? "bg-green-500 border-green-500 shadow-[0_0_12px_#22c55e]" 
+                            : pinError 
+                              ? "bg-red-500 border-red-500 shadow-[0_0_12px_#ef4444]" 
+                              : active 
+                                ? "bg-liquid border-liquid shadow-[0_0_12px_#00F0FF]" 
+                                : "bg-transparent border-white/20"
+                        )}
+                      />
+                    );
+                  })}
+                </motion.div>
 
-              <div className={clsx(
-                "p-4 rounded-2xl border flex items-center justify-center gap-4 transition-all duration-500",
-                isAuthenticated 
-                  ? "bg-green-500/20 border-green-500/50 text-green-400 shadow-[0_0_30px_rgba(34,197,94,0.2)]" 
-                  : "bg-white/5 border-white/5 text-white/50"
-              )}>
-                {isAuthenticated ? <Unlock size={32} /> : <Lock size={32} />}
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-mono uppercase tracking-widest opacity-70">Status</span>
-                  <span className="text-lg font-bold uppercase tracking-wider">
-                    {isAuthenticated ? "Coincide la contraseña" : "Awaiting Input"}
-                  </span>
+                {/* Error or guide text */}
+                <div className="h-6 mb-6 flex items-center justify-center">
+                  <AnimatePresence mode="wait">
+                    {pinError && (
+                      <motion.p 
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 4 }}
+                        className="text-xs font-mono font-bold text-red-500 uppercase tracking-widest text-center"
+                      >
+                        PIN Incorrecto — Acceso Denegado
+                      </motion.p>
+                    )}
+                    {isAuthenticated && (
+                      <motion.p 
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-xs font-mono font-bold text-green-500 uppercase tracking-widest text-center animate-pulse"
+                      >
+                        Autorizado — Desactivando Alarma...
+                      </motion.p>
+                    )}
+                    {!pinError && !isAuthenticated && (
+                      <p className="text-[11px] font-mono text-white/50 uppercase tracking-wider text-center">
+                        Introduce el PIN de 4 dígitos para desactivar
+                      </p>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Numeric buttons grid */}
+                <div className="grid grid-cols-3 gap-4 w-full max-w-[270px]">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => handlePinPress(num)}
+                      className="aspect-square flex items-center justify-center text-2xl font-display font-medium text-white/90 bg-white/5 hover:bg-white/10 active:bg-liquid/10 border border-white/10 rounded-full transition-all hover:border-liquid/30 active:scale-95 duration-200 cursor-pointer"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button
+                    onClick={handleClear}
+                    className="aspect-square flex items-center justify-center text-sm font-mono font-bold text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-400/30 rounded-full transition-all active:scale-95 cursor-pointer"
+                  >
+                    C
+                  </button>
+                  <button
+                    onClick={() => handlePinPress('0')}
+                    className="aspect-square flex items-center justify-center text-2xl font-display font-medium text-white/90 bg-white/5 hover:bg-white/10 active:bg-liquid/10 border border-white/10 rounded-full transition-all hover:border-liquid/30 active:scale-95 duration-200 cursor-pointer"
+                  >
+                    0
+                  </button>
+                  <button
+                    onClick={handleBackspace}
+                    className="aspect-square flex items-center justify-center text-base font-bold text-white/60 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all active:scale-95 cursor-pointer"
+                  >
+                    ⌫
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Fallback Option */}
+            {/* Real-time Feedback Panel (Only when in Biometric Mode) */}
+            {authMode === 'biometric' && (
+              <div className="w-full mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col justify-center">
+                  <span className="text-[10px] font-mono text-white/50 uppercase mb-2">Porcentaje de Coincidencia (Mínimo: {threshold}%)</span>
+                  <div className="flex items-end gap-3">
+                    <span className={clsx(
+                      "text-4xl font-display font-bold tabular-nums transition-colors duration-300",
+                      matchPercentage >= threshold ? "text-green-500" : "text-liquid"
+                    )}>
+                      {matchPercentage}%
+                    </span>
+                    <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden mb-2">
+                      <motion.div 
+                        className={clsx("h-full", matchPercentage >= threshold ? "bg-green-500" : "bg-liquid")}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${matchPercentage}%` }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className={clsx(
+                  "p-4 rounded-2xl border flex items-center justify-center gap-4 transition-all duration-500",
+                  isAuthenticated 
+                    ? "bg-green-500/20 border-green-500/50 text-green-400 shadow-[0_0_30px_rgba(34,197,94,0.2)]" 
+                    : "bg-white/5 border-white/5 text-white/50"
+                )}>
+                  {isAuthenticated ? <Unlock size={32} /> : <Lock size={32} />}
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-mono uppercase tracking-widest opacity-70">Estado</span>
+                    <span className="text-lg font-bold uppercase tracking-wider">
+                      {isAuthenticated ? "Acceso Permitido" : "Esperando Trazo"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Fallback Option Toggle Button */}
             <div className="w-full mt-6 flex justify-center">
-              <button className="text-xs font-mono text-white/40 hover:text-white/80 transition-colors underline underline-offset-4">
-                ¿La cámara falla? Usar contraseña alternativa (PIN)
+              <button 
+                onClick={() => {
+                  setAuthMode(authMode === 'biometric' ? 'pin' : 'biometric');
+                  handleClear();
+                }}
+                className="text-xs font-mono text-white/40 hover:text-white/80 transition-colors underline underline-offset-4 cursor-pointer"
+              >
+                {authMode === 'biometric' 
+                  ? '¿La cámara falla? Usar contraseña alternativa (PIN)' 
+                  : 'Volver al desbloqueo biométrico (Cámara)'}
               </button>
             </div>
           </motion.div>
