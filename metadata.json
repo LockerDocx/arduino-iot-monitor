@@ -1,6 +1,6 @@
 {
-  "name": "Telemetry",
-  "description": "Biometric and Environmental Control Panel for IoT monitoring.",
+  "name": "Monitor IoT de Sensores",
+  "description": "Panel de monitorización ambiental (temperatura y humedad) con desbloqueo por gestos a través de la cámara.",
   "requestFramePermissions": [
     "camera"
   ]

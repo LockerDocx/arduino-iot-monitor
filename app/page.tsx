@@ -5,7 +5,6 @@ import { CustomCursor } from '@/components/CustomCursor';
 import { Header } from '@/components/Header';
 import { LiveMetrics } from '@/components/LiveMetrics';
 import { SmoothScroll } from '@/components/SmoothScroll';
-import { ProjectDocumentation } from '@/components/ProjectDocumentation';
 import { ChartModal } from '@/components/ChartModal';
 import dynamic from 'next/dynamic';
 
