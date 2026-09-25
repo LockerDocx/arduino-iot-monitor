@@ -18,8 +18,24 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'ENVIRONMENTAL TELEMETRY | IGLOO INC.',
-  description: 'Biometric and Environmental Control Panel',
+  title: 'Environmental Telemetry | Real-Time IoT Sensor Monitor',
+  description:
+    'Real-time temperature and humidity monitoring dashboard: Arduino + DHT11 sensor, Firebase Firestore and email alerts for data centres, server rooms and greenhouses.',
+  keywords: [
+    'IoT monitor',
+    'temperature and humidity sensor',
+    'Arduino DHT11',
+    'Firebase Firestore',
+    'real-time telemetry dashboard',
+    'server room monitoring',
+    'data centre monitoring',
+  ],
+  openGraph: {
+    title: 'Environmental Telemetry | Real-Time IoT Sensor Monitor',
+    description:
+      'Temperature and humidity monitored in real time: Arduino + DHT11, Firebase Firestore and email alerts.',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
