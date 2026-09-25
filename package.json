@@ -46,7 +46,7 @@
     "tw-animate-css": "^1.4.0",
     "typescript": "5.9.3"
   },
-  "description": "Monitor IoT en tiempo real: Arduino + sensor DHT11 → gateway Node.js → Firebase Firestore → dashboard Next.js en Vercel, con alertas por correo.",
+  "description": "Real-time IoT monitor: Arduino + DHT11 sensor -> Node.js gateway -> Firebase Firestore -> Next.js dashboard on Vercel, with email alerts. Step-by-step build manual included.",
   "license": "MIT",
   "keywords": [
     "iot",

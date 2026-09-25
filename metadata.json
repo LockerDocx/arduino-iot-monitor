@@ -1,6 +1,6 @@
 {
-  "name": "Monitor IoT de Sensores",
-  "description": "Panel de monitorización ambiental (temperatura y humedad) con desbloqueo por gestos a través de la cámara.",
+  "name": "IoT Sensor Monitor",
+  "description": "Environmental monitoring dashboard (temperature and humidity) with gesture unlock through the camera.",
   "requestFramePermissions": [
     "camera"
   ]

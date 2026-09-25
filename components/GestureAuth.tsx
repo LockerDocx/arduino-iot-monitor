@@ -535,7 +535,7 @@ export function GestureAuth() {
                 {!isCameraReady && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
                     <div className="w-8 h-8 border-2 border-liquid border-t-transparent rounded-full animate-spin mb-4" />
-                    <p className="text-xs font-mono text-white/50 uppercase tracking-widest">Inicializando Cámara...</p>
+                    <p className="text-xs font-mono text-white/50 uppercase tracking-widest">Initializing camera...</p>
                   </div>
                 )}
                 
@@ -693,7 +693,7 @@ export function GestureAuth() {
                 )}>
                   {isAuthenticated ? <Unlock size={32} /> : <Lock size={32} />}
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-mono uppercase tracking-widest opacity-70">Estado</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest opacity-70">Status</span>
                     <span className="text-lg font-bold uppercase tracking-wider">
                       {isAuthenticated ? "Acceso Permitido" : "Esperando Trazo"}
                     </span>
