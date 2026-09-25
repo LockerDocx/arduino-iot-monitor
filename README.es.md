@@ -221,7 +221,9 @@ service cloud.firestore {
 2. En la pestana "General", baja hasta la sección "Tus aplicaciones".
 3. Haz clic en el icono web (</>) para anadir una aplicación web.
 4. Ponle un apodo (ej. "Dashboard Web") y haz clic en "Registrar app".
-5. Aparecera un bloque de código con una variable llamada `firebaseConfig`. Copia los valores que hay dentro de ese bloque (apiKey, authDomain, projectId, etc.). Guárdalos en un bloc de notas, los necesitaras para el script local y para la pagina web.
+5. Aparecerá un bloque de código con una variable llamada `firebaseConfig`. Copia los valores que hay dentro de ese bloque (`apiKey`, `authDomain`, `projectId`, etc.). Guárdalos en un bloc de notas: los necesitarás para el script local y para la página web.
+
+   > **No subas nunca estos valores a GitHub.** Este repositorio es público y todo lo que se sube se queda en el historial de git para siempre. El panel los lee de variables de entorno: en tu ordenador desde `.env.local` y, una vez desplegado, desde la configuración de Vercel. Mira el punto 7.
 
 ---
 
@@ -384,9 +386,11 @@ port.on('error', (err) => {
 El código de la interfaz web (frontend) está construido con Next.js, React y Tailwind CSS. 
 
 1. Asegúrate de tener todo el código del frontend en una carpeta en tu ordenador.
-2. Abre el programa GitHub Desktop.
+2. Prepara tu configuración local: copia `.env.example` a `.env.local` y rellena los valores de Firebase del paso 4.4 (y los de EmailJS del paso 5). Ese fichero está ignorado por git, así que no sale de tu ordenador.
+3. Ejecuta `npm install` y luego `npm run dev` para ver el panel en http://localhost:3000.
+4. Abre el programa GitHub Desktop.
 3. Ve a "File" > "Add Local Repository" y selecciona la carpeta del frontend.
-4. Haz clic en "Publish Repository" para subir el código a tu cuenta de GitHub. Mantenlo como repositorio privado o público segun prefieras.
+5. Haz clic en "Publish Repository" para subir el código a tu cuenta de GitHub. Mantenlo como repositorio privado o público según prefieras. Si usas GitHub Desktop, comprueba que `.env.local` **no** aparece en la lista de ficheros que se van a subir: ese fichero se queda en tu ordenador.
 
 ---
 
@@ -471,9 +475,8 @@ Para referencia, esta es la organización de los archivos del código de la pagi
 │   ├── patch-fetch.ts           # Ajuste de window.fetch para las librerías WASM
 │   └── utils.ts                 # Utilidades de estilo
 ├── store/use-ui-store.ts        # Estado global de la interfaz (Zustand)
-├── firebase-applet-config.json  # Credenciales web de Firebase (públicas por diseño)
 ├── firestore.rules              # Reglas de seguridad de Firestore
-├── .env.example                 # Variables de EmailJS que debes rellenar
+├── .env.example                 # Plantilla de las variables que debes rellenar (.env.local)
 ├── metadata.json                # Nombre y permisos del panel (cámara)
 └── vercel.json · next.config.ts · postcss.config.mjs · package.json · tsconfig.json
 ```
@@ -495,9 +498,15 @@ Google, no en este repositorio):
    → tu clave `AIza…` → *Restricciones de aplicaciones* → **Sitios web** → añade tu dominio de Vercel, y en
    *Restricciones de API* deja solo **Cloud Firestore API**.
 
-> La clave que aparece en `firebase-applet-config.json` **no es un secreto**: las claves web de Firebase
-> se envían al navegador por diseño. Lo que de verdad protege los datos son las reglas (punto 1) y las
-> restricciones (punto 2).
+**Este repositorio no contiene ninguna clave.** La configuración de Firebase se lee de variables de entorno
+(`.env.example` indica cuáles), así que no hay nada sensible publicado y no hay que rotar nada cuando se
+comparte el código.
+
+> Las claves web de Firebase se envían al navegador por diseño, así que no son secretos en el sentido
+> habitual, pero **hay que restringirlas** (punto 2): una clave sin restricciones la puede usar cualquiera
+> que la encuentre. Es exactamente lo que pasó con una versión anterior de este repositorio: la clave estaba
+> en un fichero, el escáner de secretos de GitHub lo marcó, y una prueba desde una terminal podía *leer y
+> escribir* la base de datos con ella. La historia completa y los arreglos están en [SECURITY.md](SECURITY.md).
 
 ## Licencia
 

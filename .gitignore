@@ -4,5 +4,9 @@ coverage/
 .DS_Store
 *.log
 *.tsbuildinfo
+
+# Local Firebase configuration: keep it in .env.local, never in the repository
+firebase-applet-config.json
+.env.local
 .env*
 !.env.example

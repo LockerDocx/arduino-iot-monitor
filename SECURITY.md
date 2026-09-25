@@ -3,16 +3,82 @@
 This project writes to a cloud database, so it is worth being precise about what is protected and what is
 not. Everything below is about **your** Firebase project — the repository only describes it.
 
-## What is fine, and needs no action
+## 1. This repository contains no keys
 
-`firebase-applet-config.json` contains your Firebase **web** configuration, including the `apiKey`. That key
-is **not a secret**: every Firebase web app ships it inside its JavaScript bundle, and Google documents it as
-an identifier rather than a credential. Nothing has to be rotated. What protects your data is (a) the
-security rules and (b) the restrictions on that key — both below.
+The dashboard reads its Firebase configuration from environment variables
+(`.env.example` lists them; `.env.local` holds your values locally and is gitignored). Nothing sensitive
+is committed, and `firebase-applet-config.json` — the file that used to hold the project's web
+configuration — is gone from the code **and from the git history**.
 
-## What is not fine
+If you fork or clone this project: keep it that way. Anything committed to a public repository stays in the
+history forever, even if you delete the file in a later commit, and GitHub's secret scanning will flag it.
 
-Read [`firestore.rules`](firestore.rules): both write paths are open.
+## 2. What happened with the old key (and what it proves)
+
+An earlier version of this repository committed the Firebase web configuration, including the API key
+`REDACTED_KEYC-…wharE4` (project `arduino-igloo`). GitHub's secret scanning flagged it as a **publicly leaked
+Google API key**.
+
+Two separate problems, and it is worth not confusing them:
+
+| | Status |
+| --- | --- |
+| **A committed key** | Fixed. The file is gone from the code and from history, and the app no longer needs it. |
+| **An unrestricted key** | Still yours to fix, in the Google console. See section 3. |
+
+The key was not just readable: on 25 Sep 2026, a plain `curl` from a terminal — no login, no referrer, no
+browser — **succeeded in writing** to the database with it:
+
+```bash
+curl -X PATCH -H "Content-Type: application/json" \
+  -d '{"fields":{"temp":{"doubleValue":99.9},"hum":{"doubleValue":10.0},"timestamp":{"integerValue":"0"}}}' \
+  "https://firestore.googleapis.com/v1/projects/arduino-igloo/databases/(default)/documents/telemetry/latest?key=REDACTED_KEY..."
+# -> HTTP 200
+```
+
+That is the whole risk in one line: anyone who finds the key can publish fake readings to your dashboard and
+trigger your alert emails. The original values were restored afterwards.
+
+## 3. Fix the key itself (Google console, five minutes, do it today)
+
+The key is a *web* key: Firebase sends it to the browser by design, so it is not a password. What makes it
+dangerous is being **unrestricted**, which allows scripted use from anywhere.
+
+1. Open [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials).
+2. Click the key that starts with `AIza…` (project `arduino-igloo`).
+
+Then pick one of these two paths:
+
+**Path 1 — restrict it (keeps everything working).**
+
+* *Application restrictions* → **Websites** → add your dashboard origin(s), e.g.
+  `https://your-project.vercel.app/*` and `http://localhost:3000/*` for development.
+* *API restrictions* → **Restrict key** → keep only **Cloud Firestore API**.
+* Save.
+
+> A referrer-restricted key is **rejected when there is no referrer**, so your local Node gateway (which is
+> not a browser) will stop being able to write. If you use the gateway, create a **second key** in the same
+> project for it (*Application restrictions*: none — *API restrictions*: Cloud Firestore API) and use that
+> one in `server.js`. One key per component is the normal setup, not a workaround.
+>
+> Then verify from a terminal that the browser key is really blocked: the `curl` above (no referrer) must
+> fail with `403`.
+
+**Path 2 — rotate it (cleanest).**
+
+1. Delete the old key (or "Regenerate" it) in the same screen.
+2. Copy the new value into `.env.local` (local development) and into your Vercel project
+   (Settings → Environment Variables), then redeploy.
+3. Close the GitHub alert as **Revoked** — it is the honest resolution once the old key can no longer be
+   used.
+
+Either way, remember to update `.env.local` and Vercel if you change the key: they are the only two places
+that hold it now.
+
+## 4. The real protection: the Firestore rules
+
+The key is not what protects your data — the rules are. Read [`firestore.rules`](firestore.rules): both
+write paths are open.
 
 | Path | Rule as written | What it means |
 | --- | --- | --- |
@@ -20,29 +86,10 @@ Read [`firestore.rules`](firestore.rules): both write paths are open.
 | `mail/{mailId}` | `allow create: if true` | anyone can create a document in the collection that the *Trigger Email* extension watches. That is an open relay: an anonymous visitor can trigger outgoing email, burning your EmailJS/extension quota and using your project to send mail to addresses you never chose. |
 
 Consequences in practice: the dashboard can be fed false temperature and humidity values, alarms can be
-triggered (or silenced) by a stranger, and your email allowance can be spent by someone else. Public read of
-`telemetry/latest` is intentional — your dashboard is public — so that part stays.
+triggered (or silenced) by a stranger, and your email allowance can be spent by someone else. Public **read**
+of `telemetry/latest` is intentional — your dashboard is public — so that part stays.
 
-## Fix A — restrict the key (console only, no code changes, do this today)
-
-This blocks scripted abuse immediately, because a client with no `Referer` header is rejected.
-
-1. Open [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials).
-2. Click the browser key that starts with `AIza…` (the one in `firebase-applet-config.json`).
-3. **Application restrictions** → *Websites* → add your deployed origin, e.g.
-   `https://your-project.vercel.app/*` (and `http://localhost:3000/*` while you develop).
-4. **API restrictions** → *Restrict key* → keep only **Cloud Firestore API**.
-5. Save. Then verify from a terminal that it is really blocked:
-
-   ```bash
-   curl -s -o /dev/null -w "%{http_code}\n" \
-     "https://firestore.googleapis.com/v1/projects/arduino-igloo/databases/(default)/documents/telemetry/latest"
-   ```
-
-   Before the change this returns `200`; afterwards it should return `403`. (Reading from a browser on your
-   own domain keeps working — that request carries the referrer.)
-
-## Fix B — close the rules (the real fix, needs a small code change)
+### Closing the rules (needs a small code change)
 
 The gateway must prove it is the gateway. The clean way is Firebase Authentication:
 
@@ -58,12 +105,13 @@ The gateway must prove it is the gateway. The clean way is Firebase Authenticati
    import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
    const app = initializeApp(firebaseConfig);
-   await signInWithEmailAndPassword(app.auth ?? getAuth(app), process.env.GATEWAY_EMAIL, process.env.GATEWAY_PASSWORD);
+   const auth = getAuth(app);
+   await signInWithEmailAndPassword(auth, process.env.GATEWAY_EMAIL, process.env.GATEWAY_PASSWORD);
    ```
 
    The web SDK on Node keeps that session in memory, and rules can then check `request.auth.uid`.
 
-4. In the Firebase console → **Firestore Database** → **Rules**, paste this (replace `<UID_DEL_GATEWAY>` with
+4. In the Firebase console → **Firestore Database** → **Rules**, paste this (replace `<GATEWAY_UID>` with
    the UID from step 2) and publish:
 
    ```
@@ -81,7 +129,7 @@ The gateway must prove it is the gateway. The clean way is Firebase Authenticati
        match /telemetry/latest {
          allow read: if true;                              // the public dashboard
          allow write: if request.auth != null
-                      && request.auth.uid == '<UID_DEL_GATEWAY>'
+                      && request.auth.uid == '<GATEWAY_UID>'
                       && isValidTelemetry(request.resource.data);
        }
 
@@ -97,8 +145,16 @@ The gateway must prove it is the gateway. The clean way is Firebase Authenticati
    removing both anonymous paths. **Apply the rules and the gateway sign-in in the same session** — rules
    first, then the code — or the gateway will be refused until it signs in.
 
-5. Verify: with the new rules live, run the same `curl` write from a terminal without signing in. It must
-   fail with `403 PERMISSION_DENIED`.
+5. Verify: with the new rules live, repeat the `curl` write from section 2 without signing in. It must fail
+   with `403 PERMISSION_DENIED`. That is the confirmation that the hole is closed.
+
+## 5. Checklist
+
+- [ ] Key restricted to your dashboard domains **or** rotated (section 3).
+- [ ] `.env.local` and Vercel updated if the key changed.
+- [ ] Firestore rules closed and gateway signing in (section 4).
+- [ ] GitHub secret scanning alert closed with the resolution that matches what you did.
+- [ ] Push protection enabled on the repository, so a future mistake is blocked before it is pushed.
 
 ## Reporting
 

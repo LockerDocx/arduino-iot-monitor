@@ -244,6 +244,10 @@ service cloud.firestore {
    (`apiKey`, `authDomain`, `projectId`, etc.). Keep them in a note: you will need them for the local script
    and for the web page.
 
+   > **Never commit these values.** This repository is public, and anything committed stays in the git
+   > history forever. The dashboard reads them from environment variables: `.env.local` on your computer
+   > and the Vercel project settings once deployed. See step 7.
+
 ---
 
 ## 5. Email service setup (EmailJS)
@@ -409,10 +413,14 @@ port.on('error', (err) => {
 The web interface (frontend) is built with Next.js, React and Tailwind CSS.
 
 1. Make sure you have all the frontend code in a folder on your computer.
-2. Open GitHub Desktop.
+2. Create your local configuration: copy `.env.example` to `.env.local` and fill in the Firebase values from
+   step 4.4 (and the EmailJS values from step 5). That file is gitignored, so it never leaves your computer.
+3. Run `npm install` and then `npm run dev` to see the dashboard on http://localhost:3000.
+4. Open GitHub Desktop.
 3. Go to **File → Add Local Repository** and select the frontend folder.
-4. Click **Publish Repository** to upload the code to your GitHub account. Keep it private or public,
-   whichever you prefer.
+5. Click **Publish Repository** to upload the code to your GitHub account. Keep it private or public,
+   whichever you prefer. If you use GitHub Desktop, check that `.env.local` is **not** in the list of files
+   to publish — it should stay on your computer.
 
 ---
 
@@ -511,9 +519,8 @@ For reference, this is how the files of the web app (Next.js) are organised:
 │   ├── patch-fetch.ts           # window.fetch adjustment for the WASM libraries
 │   └── utils.ts                 # Styling utilities
 ├── store/use-ui-store.ts        # Global UI state (Zustand)
-├── firebase-applet-config.json  # Firebase web credentials (public by design)
 ├── firestore.rules              # Firestore security rules
-├── .env.example                 # EmailJS variables you must fill in
+├── .env.example                 # Template of the variables you must fill in (.env.local)
 ├── metadata.json                # Dashboard name and permissions (camera)
 └── vercel.json · next.config.ts · postcss.config.mjs · package.json · tsconfig.json
 ```
@@ -534,9 +541,15 @@ not in this repository):
    → your `AIza…` key → *Application restrictions* → **Websites** → add your Vercel domain, and under
    *API restrictions* keep only **Cloud Firestore API**.
 
-> The key that appears in `firebase-applet-config.json` **is not a secret**: Firebase web keys are sent to
-> the browser by design. What really protects the data is the rules (point 1) and the restrictions
-> (point 2).
+**This repository contains no keys.** The Firebase configuration is read from environment variables
+(`.env.example` shows which ones), so nothing sensitive is committed and nothing has to be rotated when the
+code is shared.
+
+> Firebase web keys are sent to the browser by design, so they are not secrets in the usual sense — but
+> they must still be **restricted** (point 2), because an unrestricted key can be used by anyone who finds
+> it. That is exactly what happened with an earlier version of this repository: the key was committed in a
+> file, GitHub's secret scanning flagged it, and a test from a terminal could read *and write* the database
+> with it. See [SECURITY.md](SECURITY.md) for the full story and the fixes.
 
 ## License
 
